@@ -1,5 +1,8 @@
 # browser-api
 
+<img width="2528" height="1236" alt="browser" src="https://github.com/user-attachments/assets/019d6be3-922b-4d38-aaab-7e0217f5ae07" />
+
+
 A **headless browser you drive over HTTP**, built to run on Railway.
 
 Other services POST commands to it — "go to this URL", "click this", "run this
