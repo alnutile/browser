@@ -3,14 +3,38 @@
 A **headless browser you drive over HTTP**, built to run on Railway.
 
 Other services POST commands to it — "go to this URL", "click this", "run this
-JavaScript" — and it drives a real Chromium (via [Playwright](https://playwright.dev)).
-Browsers stay warm between requests, and **login sessions persist across
-redeploys**, so you can log in once and reuse that authenticated session from
-anywhere.
+JavaScript", "give me this page as Markdown" — and it drives a real Chromium (via
+[Playwright](https://playwright.dev)). Browsers stay warm between requests, and
+**login sessions persist across redeploys**, so you can log in once and reuse
+that authenticated session from anywhere.
 
 This answers the question: *"Can I run a headless browser on Railway with an API,
 that saves its session so it stays logged in, and call it from other services for
 complex JS interactions?"* — **yes.** This repo is a working implementation.
+
+## Features
+
+- **Rendered-page → Markdown.** Get any JavaScript-heavy page as clean,
+  LLM-ready Markdown — reader-mode extraction (drops nav/ads/footers) plus
+  GitHub-flavored tables and lists. See [Get a page as Markdown](#get-a-page-as-markdown).
+- **Persistent logins.** Named sessions keep cookies/`localStorage` on a Railway
+  Volume, so an authenticated session survives redeploys.
+- **Full browser control.** `goto`, `click`, `fill`, `type`, `waitForSelector`,
+  screenshots, and arbitrary in-page JS via `evaluate`.
+- **Batch actions.** Send a whole "go here → do this → read that" sequence in one
+  request.
+- **Token-protected.** Bearer auth on every route, so it's not an open proxy.
+
+### Grab a JS page as Markdown in one call
+
+```bash
+curl -s -X POST "$BASE_URL/sessions/scrape/actions" \
+  -H "Authorization: Bearer $API_TOKEN" -H "Content-Type: application/json" \
+  -d '{ "actions": [
+    { "type": "goto", "url": "https://example.com/article", "waitUntil": "networkidle" },
+    { "type": "markdown" }
+  ] }'
+```
 
 ---
 
