@@ -78,8 +78,18 @@ export async function pageToMarkdown(
 
   // 2. Readability (default): extract the main article from a DOM clone.
   if (opts.readability !== false) {
-    await page.addScriptTag({ content: readabilitySource });
-    const article = await page.evaluate(() => {
+    // Injecting a <script> tag can be refused by a page's Content Security
+    // Policy. The context is launched with bypassCSP so this normally works;
+    // if it's disabled or still fails, fall through to the body conversion
+    // below (which uses CDP evaluate and is not subject to CSP) rather than
+    // failing the whole request.
+    const injected = await page
+      .addScriptTag({ content: readabilitySource })
+      .then(() => true)
+      .catch(() => false);
+    const article = !injected
+      ? null
+      : await page.evaluate(() => {
       // `Readability` is the global defined by the injected source above.
       // Clone the document so parsing doesn't mutate the live page.
       const ReadabilityCtor = (

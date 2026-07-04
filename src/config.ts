@@ -61,4 +61,13 @@ export const config = {
 
   /** Max number of concurrently-open browser contexts (memory guard). */
   maxSessions: Number(process.env.MAX_SESSIONS ?? 5),
+
+  /**
+   * Bypass each page's Content Security Policy. Required so the `markdown`
+   * action can inject the Readability library into CSP-strict sites (GitHub,
+   * Twitter, many SaaS apps) that would otherwise block injected scripts.
+   * Standard for a scraping/automation tool; set BYPASS_CSP=false to enforce
+   * site CSP if you specifically need that.
+   */
+  bypassCsp: (process.env.BYPASS_CSP ?? "true").toLowerCase() !== "false",
 } as const;

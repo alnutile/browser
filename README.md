@@ -165,7 +165,8 @@ Options (on the action, or as query params on the GET endpoint):
 
 `extractedWith` in the response tells you which path produced the output
 (`readability`, `selector`, or `body` — it falls back to `body` when Readability
-can't identify an article).
+can't identify an article, or if a strict CSP with `BYPASS_CSP=false` prevents
+injecting the extractor).
 
 ---
 
@@ -215,6 +216,7 @@ debug. To run against a system-provided Chromium instead of the bundled one, set
 | `SESSION_IDLE_MS` | `600000` | Idle time before a live browser is closed (profile kept). |
 | `DEFAULT_TIMEOUT_MS` | `30000` | Default per-action timeout. |
 | `MAX_SESSIONS` | `5` | Max concurrent live browsers (memory guard). |
+| `BYPASS_CSP` | `true` | Bypass page Content Security Policy so `markdown` can inject Readability on CSP-strict sites (GitHub, etc.). |
 | `CHROMIUM_EXECUTABLE_PATH` | — | Optional path to a specific Chromium binary. |
 | `LOG_LEVEL` | `info` | Pino log level. |
 

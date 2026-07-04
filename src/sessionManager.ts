@@ -71,6 +71,8 @@ export class SessionManager {
       headless: config.headless,
       executablePath: config.chromiumExecutablePath,
       viewport: { width: 1280, height: 800 },
+      // Let the markdown action inject Readability into CSP-strict sites.
+      bypassCSP: config.bypassCsp,
       // By default Playwright installs its OWN signal handlers that force-kill
       // the browser on SIGTERM/SIGINT. On a Railway redeploy that kill wins the
       // race against our graceful shutdown, so Chromium dies before it flushes
