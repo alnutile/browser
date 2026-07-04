@@ -13,6 +13,7 @@ import type { FastifyInstance } from "fastify";
 import type { Page } from "playwright";
 import { sessions } from "./sessionManager.js";
 import { config } from "./config.js";
+import { pageToMarkdown } from "./markdown.js";
 
 type WaitUntil = "load" | "domcontentloaded" | "networkidle" | "commit";
 
@@ -29,6 +30,7 @@ interface Action {
     | "evaluate"
     | "screenshot"
     | "content"
+    | "markdown"
     | "url";
   // Loosely typed on purpose — validated per action below.
   url?: string;
@@ -40,6 +42,8 @@ interface Action {
   waitUntil?: WaitUntil;
   fullPage?: boolean;
   state?: "attached" | "detached" | "visible" | "hidden";
+  /** For `markdown`: run Readability main-content extraction first (default true). */
+  readability?: boolean;
 }
 
 /** Execute one action against a page and return a JSON-serialisable result. */
@@ -102,6 +106,14 @@ async function runAction(page: Page, action: Action): Promise<unknown> {
     }
     case "content":
       return { html: await page.content() };
+    case "markdown":
+      // Convert the rendered DOM to Markdown. `selector` scopes it to one
+      // element; otherwise Readability extracts the main article (readability:
+      // false converts the whole body instead).
+      return pageToMarkdown(page, {
+        readability: action.readability,
+        selector: action.selector,
+      });
     case "url":
       return { url: page.url(), title: await page.title() };
     default:
@@ -180,6 +192,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return { html: await page.content() };
     },
   );
+
+  // Rendered page as Markdown. Query params:
+  //   ?readability=false  -> convert the whole body instead of the main article
+  //   ?selector=.article  -> convert only that element
+  app.get<{
+    Params: { id: string };
+    Querystring: { readability?: string; selector?: string };
+  }>("/sessions/:id/markdown", async (req) => {
+    const { page } = await sessions.get(req.params.id);
+    return pageToMarkdown(page, {
+      readability: req.query.readability !== "false",
+      selector: req.query.selector,
+    });
+  });
 
   // Screenshot as a PNG image (binary). Add ?fullPage=true for the whole page.
   app.get<{ Params: { id: string }; Querystring: { fullPage?: string } }>(

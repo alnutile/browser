@@ -61,6 +61,7 @@ All routes except `/health` require `Authorization: Bearer $API_TOKEN`.
 | `POST /sessions/:id/type` | `{ "selector": "...", "text": "..." }` (realistic keystrokes) |
 | `POST /sessions/:id/evaluate` | `{ "script": "return document.title" }` — arbitrary JS |
 | `GET  /sessions/:id/content` | Current page HTML. |
+| `GET  /sessions/:id/markdown` | Rendered page as **Markdown** (`?readability=false`, `?selector=...`). |
 | `GET  /sessions/:id/screenshot` | PNG image (`?fullPage=true` for the whole page). |
 | `POST /sessions/:id/close` | Close the live browser but **keep** the login on disk. |
 | `DELETE /sessions/:id` | Destroy the session and **delete** its profile (full logout). |
@@ -72,7 +73,7 @@ order, returning one result per action. It stops at the first failure and tells
 you which step failed. Supported action `type`s:
 
 `goto`, `click`, `fill`, `type`, `press`, `waitForSelector`, `waitForTimeout`,
-`evaluate`, `screenshot`, `content`, `url`.
+`evaluate`, `screenshot`, `content`, `markdown`, `url`.
 
 ```bash
 curl -X POST https://YOUR-APP.up.railway.app/sessions/my-bot/actions \
@@ -96,6 +97,51 @@ same session id skip the login and go straight to work — even after a redeploy
 The `evaluate` action is the escape hatch for **complex JS interactions**: the
 `script` is a function body, so use `return` to send a value back, and you can
 `await` inside it.
+
+### Get a page as Markdown
+
+Because pages are JavaScript-rendered, `markdown` converts the *live, rendered
+DOM* — not the empty shell a plain `curl` gets. By default it runs
+[Readability](https://github.com/mozilla/readability) (reader-mode extraction)
+to keep the main article and drop nav/sidebars/footers/ads, then converts to
+GitHub-flavored Markdown (tables, lists, links, code). Ideal for feeding pages
+to an LLM.
+
+```bash
+# Quick one-shot: fetch a JS page and get clean Markdown back
+curl -s -X POST "$BASE_URL/sessions/scrape/actions" \
+  -H "Authorization: Bearer $API_TOKEN" -H "Content-Type: application/json" \
+  -d '{
+    "actions": [
+      { "type": "goto", "url": "https://example.com/article", "waitUntil": "networkidle" },
+      { "type": "markdown" }
+    ]
+  }'
+```
+
+Returns:
+
+```json
+{ "ok": true, "results": [
+  { "status": 200, "url": "https://example.com/article" },
+  { "markdown": "## Heading\n\nBody text...", "title": "Article Title",
+    "byline": "Jane Doe", "extractedWith": "readability" }
+]}
+```
+
+Or use the convenience endpoint on the current page:
+
+```bash
+curl -s "$BASE_URL/sessions/scrape/markdown" -H "Authorization: Bearer $API_TOKEN"
+```
+
+Options (on the action, or as query params on the GET endpoint):
+- `readability: false` — convert the whole `<body>` instead of the main article.
+- `selector: ".content"` — convert only that element's HTML.
+
+`extractedWith` in the response tells you which path produced the output
+(`readability`, `selector`, or `body` — it falls back to `body` when Readability
+can't identify an article).
 
 ---
 

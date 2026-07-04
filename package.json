@@ -14,11 +14,15 @@
   },
   "dependencies": {
     "@fastify/sensible": "^6.0.2",
+    "@mozilla/readability": "^0.6.0",
     "fastify": "^5.2.0",
-    "playwright": "1.61.1"
+    "playwright": "1.61.1",
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
+    "@types/turndown": "^5.0.6",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   }
