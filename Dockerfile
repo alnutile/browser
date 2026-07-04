@@ -1,6 +1,8 @@
 # Playwright's official image ships Chromium plus every system library it needs.
-# Pin the tag to the same Playwright version as package.json to avoid drift.
-FROM mcr.microsoft.com/playwright:v1.49.1-jammy
+# This tag MUST match the exact "playwright" version in package.json — the image's
+# bundled browser and the npm package's expected browser build are version-locked.
+# If you bump one, bump the other.
+FROM mcr.microsoft.com/playwright:v1.61.1-jammy
 
 WORKDIR /app
 
