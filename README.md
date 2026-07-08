@@ -190,6 +190,92 @@ all configurable — see the [Configuration reference](#configuration-reference)
 > JavaScript to accomplish the task — that's the point — so only give it prompts
 > you'd be comfortable running yourself, and keep the service token-protected.
 
+#### Integration contract (hand this to the calling tool/agent)
+
+Everything another program — or an AI that's wired this up as a tool — needs to
+call `/prompt` correctly. This is the whole interface; there is nothing else to
+know.
+
+**Request**
+
+```
+POST {BASE_URL}/sessions/{session_id}/prompt
+Authorization: Bearer {API_TOKEN}
+Content-Type: application/json
+
+{
+  "prompt": "<the task, in plain English>",   // required, non-empty string
+  "maxSteps": 40                               // optional int, 1–200; caps agent<->browser round trips
+}
+```
+
+- `session_id` — any name you choose, `1–64` chars of `[a-zA-Z0-9_-]`. **Reusing
+  the same name reuses the same browser + login.** Use a fresh name for an
+  isolated, logged-out browser; reuse a name to continue where a prior call (or a
+  prior batch login) left off. It does **not** need to be created ahead of time.
+- `API_TOKEN` — the service's bearer token (this is *not* the Anthropic key).
+
+**Response** — always JSON:
+
+```jsonc
+{
+  "ok": true,                 // true = task finished; false = it stopped early (see stopReason/error)
+  "result": "…",              // STRING: the agent's final answer — the deliverable
+  "steps": 12,                // how many model turns it took
+  "stopReason": "end_turn",   // "end_turn" | "max_steps" | "refusal"
+  "transcript": [             // ordered log of the browser actions it took
+    { "step": 1, "tool": "goto", "input": { "url": "…" }, "ok": true, "preview": "…" }
+  ],
+  "error": "…"                // present only when ok=false
+}
+```
+
+- **`result` is always a string.** If you want structured data back, *ask for
+  JSON in the prompt* ("…return the result as a JSON array of {name, price}") and
+  then `JSON.parse` `result` yourself. The service does not parse it for you.
+- **`stopReason`**: `end_turn` = the agent decided it was done (normal success).
+  `max_steps` = it hit the step cap before finishing (`ok:false`; raise
+  `maxSteps` or narrow the task). `refusal` = the model declined the task
+  (`ok:false`).
+
+**HTTP status codes**
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
+| `200` | Task finished (`ok:true`). | Use `result`. |
+| `422` | Agent stopped early (`ok:false`, e.g. `max_steps` / `refusal`). | Read `error`; retry with a higher `maxSteps` or a clearer prompt. |
+| `400` | `prompt` missing/empty. | Fix the body. |
+| `401` | Bad/missing bearer token. | Fix `Authorization`. |
+| `503` | `ANTHROPIC_API_KEY` not configured on the server. | Server-side setup; the caller can't fix it. |
+| `502` | Upstream model call failed. | Transient — retry with backoff. |
+
+**Timeouts** — a single call runs multiple model turns plus real page loads, so
+it can take **tens of seconds to a few minutes**. Set the client/tool HTTP
+timeout generously (e.g. 300s) and treat it as a long-running call, not a quick
+fetch.
+
+**Writing good prompts for it** — it behaves like a capable operator who can see
+and act on the page but can't read your mind:
+
+- State the **goal and the exact data** you want, and the **output shape**
+  ("return JSON: `[{title, url, price}]`").
+- Say **where to start** — include the URL, or rely on the session already being
+  on the right page.
+- For multi-page jobs, say **"page through all pages until there are none left"**
+  so it knows to paginate rather than stop at page one.
+- Give **stop conditions** for open-ended tasks ("stop after 200 items" / "only
+  the first 5 pages") to bound cost and avoid hitting `max_steps`.
+- It's fine to describe **interactions** ("dismiss the cookie banner if present,
+  then …", "log in with the form if you see one") — it will figure out selectors.
+
+**Minimal example a tool would issue**
+
+```bash
+curl -sS --max-time 300 -X POST "$BASE_URL/sessions/my-agent/prompt" \
+  -H "Authorization: Bearer $API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"prompt":"Go to https://news.ycombinator.com and return the titles and links of the top 10 stories as a JSON array of {title, url}."}'
+```
+
 ### Get a page as Markdown
 
 Because pages are JavaScript-rendered, `markdown` converts the *live, rendered
