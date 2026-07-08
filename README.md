@@ -77,6 +77,15 @@ curl -s -X POST "$BASE_URL/sessions/scrape/actions" \
 
 ---
 
+## Use it from Claude Desktop (MCP)
+
+Want to drive this from Claude Desktop instead of raw HTTP? [`mcp/`](./mcp) is a
+local MCP server that exposes these endpoints as tools (navigate, click, read a
+page as Markdown, screenshot, run a natural-language task). Point it at your
+Railway URL + token and Claude can browse for you. See [mcp/README.md](./mcp/README.md).
+
+---
+
 ## API
 
 All routes except `/health` require `Authorization: Bearer $API_TOKEN`.

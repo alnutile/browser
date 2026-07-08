@@ -1,0 +1,30 @@
+{
+  "name": "browser-api-mcp",
+  "version": "0.1.0",
+  "description": "Local MCP server that connects Claude Desktop (or any MCP client) to your browser-api service on Railway — drive a real headless browser, get Markdown, and take screenshots as MCP tools.",
+  "type": "module",
+  "bin": {
+    "browser-api-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
