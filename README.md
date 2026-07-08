@@ -26,6 +26,10 @@ complex JS interactions?"* — **yes.** This repo is a working implementation.
   screenshots, and arbitrary in-page JS via `evaluate`.
 - **Batch actions.** Send a whole "go here → do this → read that" sequence in one
   request.
+- **Natural-language tasks.** POST a plain-English prompt ("go to this site and
+  collect every product name and price, paginating through all pages") and
+  Claude drives the browser with these same actions until it's done. See
+  [Just send a prompt](#just-send-a-prompt).
 - **Token-protected.** Bearer auth on every route, so it's not an open proxy.
 
 ### Grab a JS page as Markdown in one call
@@ -82,6 +86,7 @@ All routes except `/health` require `Authorization: Bearer $API_TOKEN`.
 | `GET  /health` | Liveness probe (unauthenticated). |
 | `GET  /sessions` | List currently live (in-memory) sessions. |
 | `POST /sessions/:id/actions` | **Run a batch of actions in order** (the main endpoint). |
+| `POST /sessions/:id/prompt` | **Give it a plain-English task** and Claude drives the browser until it's done. Needs `ANTHROPIC_API_KEY`. |
 | `POST /sessions/:id/goto` | `{ "url": "...", "waitUntil": "load" }` |
 | `POST /sessions/:id/click` | `{ "selector": "..." }` |
 | `POST /sessions/:id/fill` | `{ "selector": "...", "text": "..." }` (sets value directly) |
@@ -124,6 +129,66 @@ same session id skip the login and go straight to work — even after a redeploy
 The `evaluate` action is the escape hatch for **complex JS interactions**: the
 `script` is a function body, so use `return` to send a value back, and you can
 `await` inside it.
+
+### Just send a prompt
+
+The batch endpoint above needs you to know the selectors and steps in advance.
+`POST /sessions/:id/prompt` doesn't: you send a **plain-English task** and Claude
+drives the browser for you — deciding which pages to open, what to click, how to
+extract, and when it's done. Under the hood it's an agentic loop where Claude
+calls the same browser actions (`goto`, `click`, `evaluate`, `markdown`,
+screenshots, …) until the task is complete, then returns its answer.
+
+This is the *"go to this site and get this data after paginating all pages"*
+endpoint:
+
+```bash
+curl -s -X POST "$BASE_URL/sessions/scrape/prompt" \
+  -H "Authorization: Bearer $API_TOKEN" -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Go to https://example.com/products and collect every product name and price. Page through all the pages until there are no more, and return the full list as JSON."
+  }'
+```
+
+Returns the model's final answer plus a log of what it did:
+
+```json
+{
+  "ok": true,
+  "result": "{ \"products\": [ { \"name\": \"...\", \"price\": \"...\" }, ... ] }",
+  "steps": 12,
+  "stopReason": "end_turn",
+  "transcript": [
+    { "step": 1, "tool": "goto", "input": { "url": "https://example.com/products" }, "ok": true, "preview": "{\"status\":200,...}" },
+    { "step": 2, "tool": "evaluate", "input": { "script": "return [...].map(...)" }, "ok": true, "preview": "{\"result\":[...]}" },
+    { "step": 3, "tool": "click", "input": { "selector": "a.next" }, "ok": true, "preview": "{\"ok\":true}" }
+  ]
+}
+```
+
+- `result` is the deliverable — Claude's final message, which contains the data
+  it was asked for (ask for JSON if you want to parse it).
+- `transcript` is the ordered list of browser actions it took (with short result
+  previews), so you can see how it got there.
+- `steps` is how many model turns it used; `stopReason` is `end_turn` when it
+  finished, `max_steps` if it hit the cap, or `refusal` if it declined.
+
+Body fields: `prompt` (required) and optional `maxSteps` (override the per-call
+step cap for this request).
+
+Because it runs against a **named session**, it reuses that session's login and
+current page — so you can log in once (via the batch endpoint), then hand Claude
+authenticated tasks against the same session id.
+
+**Setup:** this endpoint needs an `ANTHROPIC_API_KEY` set in the service
+Variables (get one at [console.anthropic.com](https://console.anthropic.com/settings/keys)).
+Without it, `/prompt` returns `503`; every other route keeps working. The model
+(`claude-opus-4-8` by default), reasoning effort, step cap, and token limits are
+all configurable — see the [Configuration reference](#configuration-reference).
+
+> **Note:** the model can navigate to any URL and run arbitrary in-page
+> JavaScript to accomplish the task — that's the point — so only give it prompts
+> you'd be comfortable running yourself, and keep the service token-protected.
 
 ### Get a page as Markdown
 
@@ -222,6 +287,12 @@ debug. To run against a system-provided Chromium instead of the bundled one, set
 | `BYPASS_CSP` | `true` | Bypass page Content Security Policy so `markdown` can inject Readability on CSP-strict sites (GitHub, etc.). |
 | `CHROMIUM_EXECUTABLE_PATH` | — | Optional path to a specific Chromium binary. |
 | `LOG_LEVEL` | `info` | Pino log level. |
+| `ANTHROPIC_API_KEY` | — | Enables `POST /sessions/:id/prompt`. Without it that route returns `503`; all others work. |
+| `ANTHROPIC_MODEL` | `claude-opus-4-8` | Model the `/prompt` agent uses. |
+| `AGENT_EFFORT` | `high` | Reasoning effort for the agent: `low`, `medium`, `high`, `xhigh`, `max`. |
+| `AGENT_MAX_STEPS` | `40` | Max agent↔browser round trips per `/prompt` call (runaway-loop guard). |
+| `AGENT_MAX_TOKENS` | `16000` | Max output tokens per model turn in the agent loop. |
+| `AGENT_MAX_TOOL_RESULT_CHARS` | `20000` | Truncate a single tool result before feeding it back, so big page dumps don't blow up context/cost. |
 
 ---
 

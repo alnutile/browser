@@ -10,116 +10,11 @@
  */
 
 import type { FastifyInstance } from "fastify";
-import type { Page } from "playwright";
 import { sessions } from "./sessionManager.js";
 import { config } from "./config.js";
 import { pageToMarkdown } from "./markdown.js";
-
-type WaitUntil = "load" | "domcontentloaded" | "networkidle" | "commit";
-
-/** A single instruction in a batch. Mirrors common Playwright page actions. */
-interface Action {
-  type:
-    | "goto"
-    | "click"
-    | "fill"
-    | "type"
-    | "press"
-    | "waitForSelector"
-    | "waitForTimeout"
-    | "evaluate"
-    | "screenshot"
-    | "content"
-    | "markdown"
-    | "url";
-  // Loosely typed on purpose — validated per action below.
-  url?: string;
-  selector?: string;
-  text?: string;
-  key?: string;
-  script?: string;
-  timeout?: number;
-  waitUntil?: WaitUntil;
-  fullPage?: boolean;
-  state?: "attached" | "detached" | "visible" | "hidden";
-  /** For `markdown`: run Readability main-content extraction first (default true). */
-  readability?: boolean;
-}
-
-/** Execute one action against a page and return a JSON-serialisable result. */
-async function runAction(page: Page, action: Action): Promise<unknown> {
-  switch (action.type) {
-    case "goto": {
-      if (!action.url) throw new Error("goto requires 'url'");
-      const res = await page.goto(action.url, {
-        waitUntil: action.waitUntil ?? "load",
-        timeout: action.timeout,
-      });
-      return { status: res?.status() ?? null, url: page.url() };
-    }
-    case "click":
-      if (!action.selector) throw new Error("click requires 'selector'");
-      await page.click(action.selector, { timeout: action.timeout });
-      return { ok: true };
-    case "fill":
-      if (!action.selector) throw new Error("fill requires 'selector'");
-      await page.fill(action.selector, action.text ?? "", {
-        timeout: action.timeout,
-      });
-      return { ok: true };
-    case "type":
-      if (!action.selector) throw new Error("type requires 'selector'");
-      // pressSequentially fires realistic keystrokes (needed by some JS forms).
-      await page
-        .locator(action.selector)
-        .pressSequentially(action.text ?? "", { timeout: action.timeout });
-      return { ok: true };
-    case "press":
-      if (!action.key) throw new Error("press requires 'key'");
-      await page.keyboard.press(action.key);
-      return { ok: true };
-    case "waitForSelector":
-      if (!action.selector)
-        throw new Error("waitForSelector requires 'selector'");
-      await page.waitForSelector(action.selector, {
-        state: action.state ?? "visible",
-        timeout: action.timeout,
-      });
-      return { ok: true };
-    case "waitForTimeout":
-      await page.waitForTimeout(action.timeout ?? 1000);
-      return { ok: true };
-    case "evaluate": {
-      if (!action.script) throw new Error("evaluate requires 'script'");
-      // Runs arbitrary JS in the page. `script` is treated as a function body;
-      // use `return` to send a value back. This is the escape hatch for the
-      // "complex JS interactions" use case.
-      const result = await page.evaluate(
-        // eslint-disable-next-line no-new-func
-        new Function(`return (async () => { ${action.script} })()`) as never,
-      );
-      return { result };
-    }
-    case "screenshot": {
-      const buf = await page.screenshot({ fullPage: action.fullPage ?? false });
-      return { image: buf.toString("base64"), encoding: "base64", type: "png" };
-    }
-    case "content":
-      return { html: await page.content() };
-    case "markdown":
-      // Convert the rendered DOM to Markdown. `selector` scopes it to one
-      // element; otherwise Readability extracts the main article (readability:
-      // false converts the whole body instead).
-      return pageToMarkdown(page, {
-        readability: action.readability,
-        selector: action.selector,
-      });
-    case "url":
-      return { url: page.url(), title: await page.title() };
-    default:
-      throw new Error(`Unknown action type: ${(action as Action).type}`);
-  }
-}
+import { runAction, type Action } from "./actions.js";
+import { runPrompt } from "./agent.js";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // List currently live (in-memory) sessions.
@@ -152,6 +47,39 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return { ok: true, results };
     },
   );
+
+  // Natural-language endpoint: give it a plain-English task and Claude drives
+  // the browser (via the same actions above) until it's done. This is the
+  // "just send a prompt and Playwright does it" endpoint — e.g. "go to X and
+  // collect every product name and price, paginating through all pages".
+  app.post<{
+    Params: { id: string };
+    Body: { prompt?: string; maxSteps?: number };
+  }>("/sessions/:id/prompt", async (req, reply) => {
+    const prompt = req.body?.prompt;
+    if (typeof prompt !== "string" || prompt.trim() === "") {
+      return reply.badRequest("Body must be { prompt: \"...\" }");
+    }
+    if (!config.anthropicApiKey) {
+      return reply.status(503).send({
+        ok: false,
+        error:
+          "ANTHROPIC_API_KEY is not set. Add it to the service Variables to enable the /prompt endpoint.",
+      });
+    }
+    const { page } = await sessions.get(req.params.id);
+    try {
+      const result = await runPrompt(page, prompt, {
+        maxSteps: req.body?.maxSteps,
+      });
+      return reply.status(result.ok ? 200 : 422).send(result);
+    } catch (err) {
+      return reply.status(502).send({
+        ok: false,
+        error: (err as Error).message,
+      });
+    }
+  });
 
   // Convenience single-action endpoints (thin wrappers over runAction).
   const single = (type: Action["type"]) =>

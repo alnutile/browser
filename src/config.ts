@@ -70,4 +70,35 @@ export const config = {
    * site CSP if you specifically need that.
    */
   bypassCsp: (process.env.BYPASS_CSP ?? "true").toLowerCase() !== "false",
+
+  /**
+   * Anthropic API key, used only by the natural-language `/prompt` endpoint
+   * (Claude drives the browser via tool use). Optional — every other route
+   * works without it; the `/prompt` route returns 503 if it isn't set.
+   */
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY || undefined,
+
+  /** Model the `/prompt` agent uses. Defaults to the current flagship Opus. */
+  anthropicModel: process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8",
+
+  /** Reasoning effort for the agent: low | medium | high | xhigh | max. */
+  agentEffort: process.env.AGENT_EFFORT ?? "high",
+
+  /**
+   * Max agent<->browser round trips per `/prompt` call. Each step is one model
+   * turn plus the tool calls it makes; a guard against runaway loops.
+   */
+  agentMaxSteps: Number(process.env.AGENT_MAX_STEPS ?? 40),
+
+  /** Max output tokens per model turn in the agent loop. */
+  agentMaxTokens: Number(process.env.AGENT_MAX_TOKENS ?? 16_000),
+
+  /**
+   * Cap on the characters of a single tool result fed back to the model. Page
+   * markdown/HTML can be huge; truncating keeps the context (and cost) bounded
+   * when paginating across many pages.
+   */
+  agentMaxToolResultChars: Number(
+    process.env.AGENT_MAX_TOOL_RESULT_CHARS ?? 20_000,
+  ),
 } as const;
