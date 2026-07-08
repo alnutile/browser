@@ -2,6 +2,7 @@
 
 <img width="2528" height="1236" alt="browser" src="https://github.com/user-attachments/assets/019d6be3-922b-4d38-aaab-7e0217f5ae07" />
 
+> Read the post on [Substack](https://open.substack.com/pub/dailyaistudio/p/make-your-own-headless-browser-and?r=5v05x9&utm_campaign=post&utm_medium=web&showWelcomeOnShare=true)
 
 A **headless browser you drive over HTTP**, built to run on Railway.
 
